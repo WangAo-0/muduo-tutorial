@@ -6,14 +6,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-# Specify the path where the installed muduo libraries can be found
-set(MUDUO_PATH "/home/oliver/muduo-tutorial/cmake-submodule/build/release-install-cpp11")
-
-find_library(MUDUO_BASE muduo_base PATHS ${MUDUO_PATH}/lib NO_DEFAULT_PATH)
-find_library(MUDUO_NET muduo_net PATHS ${MUDUO_PATH}/lib NO_DEFAULT_PATH)
+add_subdirectory(muduo)
 
 # Set the common libraries.
-link_libraries(${MUDUO_NET} ${MUDUO_BASE} pthread rt)
+link_libraries(muduo_net muduo_base pthread rt)
 
 # Set the source files for startGenerator.
 set(START_GENERATOR_SRC
@@ -22,7 +18,7 @@ set(START_GENERATOR_SRC
   ../src/PressureClient.cpp
 )
 add_executable(startGenerator ${START_GENERATOR_SRC})
-target_include_directories(startGenerator PRIVATE ${MUDUO_PATH}/include)
+target_include_directories(startGenerator PRIVATE muduo)
 
 # Set the source files for startServer.
 set(START_SERVER_SRC
@@ -30,4 +26,4 @@ set(START_SERVER_SRC
   ../src/RelayServer.cpp 
 )
 add_executable(startServer ${START_SERVER_SRC})
-target_include_directories(startServer PRIVATE ${MUDUO_PATH}/include)
+target_include_directories(startServer PRIVATE muduo)

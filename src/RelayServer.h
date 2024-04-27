@@ -4,6 +4,8 @@
 #include "muduo/net/TcpServer.h"
 #include "muduo/net/EventLoop.h"
 #include <map>
+#include <deque>
+
 
 using namespace muduo;
 using namespace muduo::net;
@@ -21,6 +23,8 @@ private:
     TcpServer server_;
     // Record all clients.
     std::map<uint32_t, TcpConnectionPtr> clientsMap_;
+    std::deque<TcpConnectionPtr> readyToCloseClientsMap_;
+    // std::map<uint32_t, std::string> offlineMessages_;
 };
 
 #endif // RELAY_SERVER_H

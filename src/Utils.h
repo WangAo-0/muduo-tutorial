@@ -1,37 +1,36 @@
-#include <stdint.h>
+// #include <stdint.h>
 #include <arpa/inet.h>  // for htonl
 
-int64_t htonll(int64_t value) {
-    // Convert the int64_t to uint64_t
-    uint64_t uvalue = static_cast<uint64_t>(value);
-    
-    // Check if we're on a little-endian system
-    if (htonl(1) != 1) {
-        // If we are, we need to swap the order of the bytes
-        uint32_t high_part = htonl(static_cast<uint32_t>(uvalue >> 32));
-        uint32_t low_part = htonl(static_cast<uint32_t>(uvalue & 0xFFFFFFFFLL));
+class Constants {
+public:
+    static const uint8_t SEVR_MSG = 2;
+    static const uint8_t CONN_MSG = 1;
+    static const uint8_t SEND_MSG = 0;
+    static const uint32_t SERVER_ID = 0;
+    // 其他常量...
+};
 
-        return static_cast<int64_t>((static_cast<uint64_t>(low_part) << 32) | high_part);
-    } else {
-        // If we're on a big-endian system, we don't need to do anything
-        return value;
-    }
-}
+// bool isLittleEndian() {
+//     static const int num = 1;
+//     return *reinterpret_cast<const char*>(&num) == 1;
+// }
 
-// Function to convert a 64-bit integer from network byte order to host byte order
-int64_t ntohll(int64_t value) {
-    // Convert the int64_t to uint64_t
-    uint64_t uvalue = static_cast<uint64_t>(value);
-    
-    // Check if we're on a little-endian system
-    if (htonl(1) != 1) {
-        // If we are, we need to swap the order of the bytes
-        uint32_t high_part = ntohl(static_cast<uint32_t>(uvalue >> 32));
-        uint32_t low_part = ntohl(static_cast<uint32_t>(uvalue & 0xFFFFFFFFLL));
+// int64_t htonll(int64_t value) {
+//     if (isLittleEndian()) {
+//         const uint32_t high_part = htonl(static_cast<uint32_t>(value >> 32));
+//         const uint32_t low_part = htonl(static_cast<uint32_t>(value & 0xFFFFFFFFLL));
+//         return static_cast<int64_t>((static_cast<uint64_t>(low_part) << 32) | high_part);
+//     } else {
+//         return value;
+//     }
+// }
 
-        return static_cast<int64_t>((static_cast<uint64_t>(low_part) << 32) | high_part);
-    } else {
-        // If we're on a big-endian system, we don't need to do anything
-        return value;
-    }
-}
+// int64_t ntohll(int64_t value) {
+//     if (isLittleEndian()) {
+//         const uint32_t high_part = ntohl(static_cast<uint32_t>(value >> 32));
+//         const uint32_t low_part = ntohl(static_cast<uint32_t>(value & 0xFFFFFFFFLL));
+//         return static_cast<int64_t>((static_cast<uint64_t>(low_part) << 32) | high_part);
+//     } else {
+//         return value;
+//     }
+// }
