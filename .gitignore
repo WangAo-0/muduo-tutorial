@@ -3,3 +3,5 @@ build/
 .vscode
 ./cmake-submodule/muduo/
 echo*
+.clangd
+compile_commands.json

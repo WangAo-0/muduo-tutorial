@@ -43,8 +43,8 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, handle_sigint);
   if (argc == 2) {
     if (strcmp(argv[1], "-h") == 0) {
-      printf("Usage: %s port thread_num\n Or defult args : \n port :8000 "
-             "numThreads:0 \n",
+      printf("Usage: %s [port] [thread_num]\n"
+             "Defult Args : 8000 0\n",
              argv[0]);
       return 0;
     }

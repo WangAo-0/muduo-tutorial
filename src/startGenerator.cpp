@@ -25,10 +25,6 @@ void setLogging(const char *argv0) {
 
 void setArgs(int argc, char *argv[], int &sessionCount, int &messageSize,
              int &port, int &messageCount) {
-  //   if (argc != 5) {
-  //     fprintf(stderr, "Usage: %s session_count message_size port\n",
-  //     argv[0]); return 1;
-  //   }
   if (argc > 1) {
     sessionCount = atoi(argv[1]);
   }
@@ -47,9 +43,11 @@ void setArgs(int argc, char *argv[], int &sessionCount, int &messageSize,
 }
 
 int main(int argc, char *argv[]) {
-  if(argc == 2){
-    if(strcmp(argv[1], "-h") == 0){
-      printf("Usage: %s session_count message_size port message_count\n Or default args : \n session_count:100 \n messageSize=13\n port=8000\n message_count=100\n", argv[0]);
+  if (argc == 2) {
+    if (strcmp(argv[1], "-h") == 0) {
+      printf("Usage: %s [session_count] [message_size] [port] [message_count]\n"
+             "Default Args : 100 13 8000 100\n",
+             argv[0]);
       return 0;
     }
   }
