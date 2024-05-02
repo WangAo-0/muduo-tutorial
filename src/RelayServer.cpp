@@ -11,6 +11,14 @@ RelayServer::RelayServer(EventLoop *loop, const InetAddress &listenAddr,
   server_.setMessageCallback(
       std::bind(&RelayServer::onMessage, this, _1, _2, _3));
   server_.setThreadNum(numThreads);
+  server_.setWriteCompleteCallback(
+      std::bind(&RelayServer::onWriteComplete, this, _1));
+}
+
+void RelayServer::onWriteComplete(const TcpConnectionPtr &conn) {
+  // LOG_INFO << "RelayServer - Write complete";
+  // LOG_INFO << " " << conn->name() << " RelayServer - Write complete "
+  //          << conn->bytesSend_;
 }
 
 void RelayServer::start() { server_.start(); }
@@ -23,10 +31,10 @@ void RelayServer::onConnection(const TcpConnectionPtr &conn) {
     // 同时也是一个启动消息，触发客户端的接收消息，接受完消息后，客户端会开始发送消息
     MessageHeader header;
     string message = "Welcome to RelayServer!";
-    header.flag = 2;                       // 标志位
+    header.flag = 2;                           // 标志位
     header.messageLength = message.size(); // 数据长度
-    header.senderID = 0;                   // 发送方ID,0是服务器
-    header.targetID = 0;                   // 目标ID
+    header.senderID = 0;                       // 发送方ID,0是服务器
+    header.targetID = 0;                       // 目标ID
     header.sendTime = muduo::Timestamp::now().microSecondsSinceEpoch();
     char headerAndData[sizeof(MessageHeader) + message.size()];
     memcpy(headerAndData, &header, sizeof(MessageHeader));
@@ -37,7 +45,8 @@ void RelayServer::onConnection(const TcpConnectionPtr &conn) {
     // readyToCloseClientsMap_.push_back(conn);
     // LOG_INFO << "RelayServer - Connection from "
     //          << conn->peerAddress().toIpPort() << " is down"
-    //          << "readyToCloseClientsMap_ : " << readyToCloseClientsMap_.size()
+    //          << "readyToCloseClientsMap_ : " <<
+    //          readyToCloseClientsMap_.size()
     //          << "clientsMap_ : " << clientsMap_.size();
     // if (readyToCloseClientsMap_.size() == clientsMap_.size()) {
     //   LOG_INFO << "Clients nums :" << readyToCloseClientsMap_.size()
@@ -57,7 +66,7 @@ void RelayServer::onConnection(const TcpConnectionPtr &conn) {
  */
 void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
                             Timestamp time) {
-  // 检查缓冲区中是否只少有一个报头大小的数据
+  // 检查缓冲区中是否至少有一个报头大小的数据
   while (buf->readableBytes() >= sizeof(MessageHeader)) {
     // 获取报头
     MessageHeader header;
@@ -87,8 +96,14 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
         memcpy(headerAndData + sizeof(MessageHeader), message.c_str(),
                message.size());
         // 发送数据
-        it->second->send(headerAndData, sizeof(MessageHeader) + message.size());
+        it->second->send(headerAndData,
+                         sizeof(MessageHeader) + message.size());
+        LOG_INFO << "RelayServer - Send message to " << header.targetID;
+        // LOG_INFO << "RelayServer recv Client " << header.senderID << " : "
+        //          << conn->bytesReceived_;
       } else {
+        // 目标还没上线，消息缓存在buffer中
+
         // 1. 直接抛弃消息
         // LOG_WARN << "Target client not found: " << header.targetID;
         // buf->retrieve(sizeof(MessageHeader) + header.messageLength);

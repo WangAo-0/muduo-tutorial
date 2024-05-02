@@ -25,6 +25,7 @@ void setLogging(const char *argv0) {
 void setArgs(int argc, char *argv[], int &port, int &numThreads) {
   if (argc > 1) {
     port = std::atoi(argv[1]);
+    std::cout<<"port "<< port;
   }
   if (argc > 2) {
     numThreads = std::atoi(argv[2]);

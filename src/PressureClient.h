@@ -12,7 +12,7 @@ class PressureClient {
 public:
   PressureClient(muduo::net::EventLoop *loop,
                  const muduo::net::InetAddress &serverAddr, const uint32_t &id,
-                 int messageSize, int messageCount);
+                 int messageSize, int messageCount, bool unlimitedSend );
 
   void connect();
 
@@ -32,6 +32,7 @@ private:
   muduo::net::TcpClient client_;
   int messageSize_;
   int sendMessageCount_;
+  bool unlimitedSend_ ;
   int recvMessageCount_ ;
   uint32_t remainingMessageSize_ = 0;
   bool isConnected_ = false;

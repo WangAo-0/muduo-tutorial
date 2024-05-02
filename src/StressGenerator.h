@@ -11,7 +11,7 @@ class StressGenerator {
 public:
   StressGenerator(muduo::net::EventLoop *loop,
                   const muduo::net::InetAddress &serverAddr, int sessionCount,
-                  int messageSize, int messageCount);
+                  int messageSize, int messageCount , bool nonStop = true);
   void connect();
 
 private:
@@ -21,6 +21,7 @@ private:
   int messageSize_;
   int messageCount_;
   void onClientClose();
+  bool nonStop_ ;
   std::vector<std::unique_ptr<PressureClient>> clients_;
   std::vector<std::unique_ptr<PressureClient>> pendingDestruction_;
 

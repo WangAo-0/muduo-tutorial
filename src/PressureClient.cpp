@@ -5,10 +5,10 @@
 PressureClient::PressureClient(muduo::net::EventLoop *loop,
                                const muduo::net::InetAddress &serverAddr,
                                const uint32_t &id, int messageSize,
-                               int messageCount)
+                               int messageCount, bool unlimitedSend)
     : client_(loop, serverAddr, std::to_string(id)), id_(id),
       messageSize_(messageSize), sendMessageCount_(messageCount),
-      recvMessageCount_(messageCount) {
+      recvMessageCount_(messageCount), unlimitedSend_(unlimitedSend) {
   client_.setConnectionCallback(
       std::bind(&PressureClient::onConnection, this, std::placeholders::_1));
   client_.setMessageCallback(
@@ -18,17 +18,59 @@ PressureClient::PressureClient(muduo::net::EventLoop *loop,
       std::bind(&PressureClient::onWriteComplete, this, std::placeholders::_1));
 }
 
+void sendNextMessage(const muduo::net::TcpConnectionPtr &conn,
+                     const uint32_t &id, int &messageSize) {
+  MessageHeader header;
+  header.senderID = id;
+  header.flag = Constants::SEND_MSG;
+  header.targetID = id % 2 == 0 ? id - 1 : id + 1;
+  header.sendTime = muduo::Timestamp::now().microSecondsSinceEpoch();
+  std::vector<char> data(messageSize, 'a');
+  header.messageLength = data.size();
+
+  muduo::net::Buffer buffer;
+  buffer.append(&header, sizeof(MessageHeader)); // 添加 header 到缓冲区
+  buffer.append(data.data(), data.size());       // 添加数据到缓冲区
+
+  conn->send(&buffer); // 一次性发送所有数据
+}
+
 /**
- * @brief 
- * 
- * @param conn 
+ * @brief 当所有发送的消息都发送完毕后，偶数的客户端先关闭连接
+ * 因为是奇数先发的，所以奇数的客户端需要等待偶数的客户端发送完消息后，再关闭连接
+ *
+ * @param conn
  */
 void PressureClient::onWriteComplete(const muduo::net::TcpConnectionPtr &conn) {
-  if (sendMessageCount_ == 0 && id_ % 2 == 0) {
-    conn->forceClose();
-    forceCloseCalled_ = true;
+
+  // 2000,
+  // 2
+  // 1 : 1
+  // 2 : 0
+  // 最开始有一条，所以，应该是3：-1，2000：-1
+  LOG_INFO << "sendMessageCount_ " << sendMessageCount_ << " Client " << id_
+           << " onWriteComplete";
+  if (unlimitedSend_) {
+    sendNextMessage(conn, id_, messageSize_);
+    sendMessageCount_--;
     return;
   }
+  // 只发送100条数据，当发送完毕后且接收完毕后，关闭连接
+  if (sendMessageCount_ == -1) {
+    // LOG_INFO << "Client " << id_ << " sendNextMessage " << conn->bytesSend_;
+    if (recvMessageCount_ == 0) {
+      if (conn->connected()) {
+        conn->forceClose();
+        LOG_INFO << "WOAINI";
+      }
+    }
+    // conn->shutdown();
+    return;
+  }
+
+  // 检查数据Buffer是否过多，如果过多则停止发送，并且最好是再监听可写事件，但是muduo库这里没有提供
+  sendNextMessage(conn, id_, messageSize_);
+  sendMessageCount_--;
 }
 
 void PressureClient::connect() { client_.connect(); }
@@ -53,23 +95,6 @@ void PressureClient::onConnection(const muduo::net::TcpConnectionPtr &conn) {
     }
   }
 }
-
-  void sendNextMessage(const muduo::net::TcpConnectionPtr &conn,
-                      const uint32_t &id, int &messageCount, int &messageSize) {
-    MessageHeader header;
-    header.senderID = id;
-    header.flag = Constants::SEND_MSG;
-    header.targetID = id % 2 == 0 ? id - 1 : id + 1;
-    header.sendTime = muduo::Timestamp::now().microSecondsSinceEpoch();
-    std::vector<char> data(messageSize, 'a');
-    header.messageLength = data.size();
-
-    muduo::net::Buffer buffer;
-    buffer.append(&header, sizeof(MessageHeader)); // 添加 header 到缓冲区
-    buffer.append(data.data(), data.size());       // 添加数据到缓冲区
-
-    conn->send(&buffer); // 一次性发送所有数据
-  }
 
 /**
  * @brief 处理完整的消息
@@ -96,9 +121,6 @@ void PressureClient::doHandleReadyMessage(
     // 服务器发来的消息，说明连接建立成功
     LOG_INFO << "RelaySever :" << message << " Client " << id_
              << " , delay: " << delay << "ms";
-    if (id_ % 2 == 0) { // 奇数的人先发消息
-      return;
-    }
   } else {
     // 客户端发来的消息
     LOG_INFO << " Client " << header.senderID << " to "
@@ -107,28 +129,14 @@ void PressureClient::doHandleReadyMessage(
     recvMessageCount_--;
     LOG_INFO << "Client " << id_
              << " recvMessageCount_ = " << recvMessageCount_;
-
-    // 4. 如果接收到的消息数量剩余0，且是奇数的客户端，关闭连接
-    if (recvMessageCount_ == 0 && id_ % 2 != 0) {
-      // conn->shutdown();
-      conn->forceClose();
-      return;
+    // 接收先完成，则等待发送端关闭
+    // 发送先完成，则等待接收端关闭
+    if (recvMessageCount_ == 0 && sendMessageCount_ == -1) {
+      if (conn->connected()) {
+        conn->forceClose();
+        LOG_INFO << "WOAINI";
+      }
     }
-  }
-  // if (sendMessageCount_ == -1 && id_ % 2 != 0) {
-
-  //   // conn->shutdown();
-  //   return;
-  // }
-
-  sendNextMessage(conn, id_, sendMessageCount_, messageSize_);
-  sendMessageCount_--;
-  LOG_INFO << "Client " << id_ << " sendMessageCount_ = " << sendMessageCount_;
-
-  // 5. 如果发送消息数量剩余0，且是偶数的客户端，关闭连接
-  if (sendMessageCount_ == 0 && id_ % 2 == 0) {
-    conn->shutdown();
-    return;
   }
 }
 
@@ -178,23 +186,6 @@ bool PressureClient::handleMessage(const muduo::net::TcpConnectionPtr &conn,
   }
 }
 
-// void sendNextMessage(const muduo::net::TcpConnectionPtr &conn,
-//                      const uint32_t &id, int &messageCount, int &messageSize)
-//                      {
-//   MessageHeader header;
-//   header.senderID = id;
-//   header.flag = 0;
-//   header.targetID = id % 2 == 0 ? id - 1 : id + 1;
-//   header.sendTime = muduo::Timestamp::now().microSecondsSinceEpoch();
-//   std::vector<char> data(messageSize, 'a');
-//   header.messageLength = data.size();
-
-//   char headerAndData[data.size() + sizeof(MessageHeader)];
-//   memcpy(headerAndData, &header, sizeof(MessageHeader));
-//   memcpy(headerAndData + sizeof(MessageHeader), data.data(), data.size());
-//   conn->send(headerAndData, sizeof(MessageHeader) + data.size());
-// }
-
 void PressureClient::onMessage(const muduo::net::TcpConnectionPtr &conn,
                                muduo::net::Buffer *buf,
                                muduo::Timestamp receiveTime) {
@@ -204,12 +195,4 @@ void PressureClient::onMessage(const muduo::net::TcpConnectionPtr &conn,
       break;
     }
   }
-
-  // sendNextMessage(conn, id_, sendMessageCount_, messageSize_);
-  // sendMessageCount_--;
-
-  // if (sendMessageCount_ == 0) {
-  //   conn->shutdown();
-  //   return;
-  // }
 }

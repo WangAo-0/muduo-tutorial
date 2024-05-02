@@ -23,52 +23,68 @@ void setLogging(const char *argv0) {
   g_asyncLog->start();
 }
 
-void setArgs(int argc, char *argv[], int &sessionCount, int &messageSize,
-             int &port, int &messageCount) {
-  //   if (argc != 5) {
+void setArgs(int argc, char *argv[], bool &nonStop, int &sessionCount,
+             int &messageSize, int &port, int &messageCount) {
+  //   if (argc != 6) {
   //     fprintf(stderr, "Usage: %s session_count message_size port\n",
   //     argv[0]); return 1;
   //   }
   if (argc > 1) {
-    sessionCount = atoi(argv[1]);
+    if (atoi(argv[1]) == 1) {
+      nonStop = true;
+    } else {
+      nonStop = false;
+    }
   }
 
   if (argc > 2) {
-    messageSize = atoi(argv[2]);
+    sessionCount = atoi(argv[2]);
   }
 
   if (argc > 3) {
-    port = atoi(argv[3]);
+    messageSize = atoi(argv[3]);
   }
 
   if (argc > 4) {
-    messageCount = atoi(argv[4]);
+    port = atoi(argv[4]);
+  }
+
+  if (argc > 5) {
+    messageCount = atoi(argv[5]);
   }
 }
 
 int main(int argc, char *argv[]) {
-  if(argc == 2){
-    if(strcmp(argv[1], "-h") == 0){
-      printf("Usage: %s session_count message_size port message_count\n Or default args : \n session_count:100 \n messageSize=13\n port=8000\n message_count=100\n", argv[0]);
+  if (argc == 2) {
+    if (strcmp(argv[1], "-h") == 0) {
+      printf("Usage: %s nonstop(1) session_count message_size port message_count\n Or "
+             "default args : \n session_count:100 \n messageSize=13\n "
+             "port=8000\n message_count=100\n",
+             argv[0]);
       return 0;
     }
   }
   setLogging(argv[0]);
   // muduo::Logger::setLogLevel(muduo::Logger::FATAL);
-
+  bool nonStop = false;  // 自动停止
   int port = 8000;
-  int sessionCount = 100; // atoi(argv[1]);
+  int sessionCount = 50; // atoi(argv[1]);
   int messageSize = 13;   // atoi(argv[2]);
   int messageCount = 100; // atoi(argv[3]);
 
-  setArgs(argc, argv, sessionCount, messageSize, port, messageCount);
+  setArgs(argc, argv, nonStop, sessionCount, messageSize, port, messageCount);
 
   LOG_INFO << "pid = " << getpid() << ", tid = " << muduo::CurrentThread::tid();
   muduo::net::EventLoop loop;
   muduo::net::InetAddress serverAddr("127.0.0.1", port); // 服务器地址需要修改
 
+  if (nonStop) {
+    LOG_INFO << "nonStop mode";
+  } else {
+    LOG_INFO << "stop mode";
+  }
   StressGenerator generator(&loop, serverAddr, sessionCount, messageSize,
-                            messageCount);
+                            messageCount, nonStop);
   generator.connect();
 
   loop.loop();
