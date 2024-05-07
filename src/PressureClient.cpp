@@ -1,14 +1,15 @@
 #include "PressureClient.h"
 #include "Utils.h"
 #include "muduo/base/Logging.h"
+#include "muduo/net/Callbacks.h"
 
 PressureClient::PressureClient(muduo::net::EventLoop *loop,
                                const muduo::net::InetAddress &serverAddr,
                                const uint32_t &id, int messageSize,
-                               int messageCount)
+                               int messageCount, bool stop)
     : client_(loop, serverAddr, std::to_string(id)), id_(id),
       messageSize_(messageSize), sendMessageCount_(messageCount),
-      recvMessageCount_(messageCount) {
+      recvMessageCount_(messageCount), stop_(stop) {
   client_.setConnectionCallback(
       std::bind(&PressureClient::onConnection, this, std::placeholders::_1));
   client_.setMessageCallback(
@@ -18,8 +19,7 @@ PressureClient::PressureClient(muduo::net::EventLoop *loop,
       std::bind(&PressureClient::onWriteComplete, this, std::placeholders::_1));
 }
 
-void sendNextMessage(const muduo::net::TcpConnectionPtr &conn,
-                     const uint32_t &id, int &messageSize) {
+void sendNextMessage(const muduo::net::TcpConnectionPtr &conn, const uint32_t &id, int &messageSize) {
   MessageHeader header;
   header.senderID = id;
   header.flag = Constants::SEND_MSG;
@@ -41,19 +41,24 @@ void sendNextMessage(const muduo::net::TcpConnectionPtr &conn,
  * @param conn
  */
 void PressureClient::onWriteComplete(const muduo::net::TcpConnectionPtr &conn) {
+  if (!stop_) {
+    LOG_INFO << "Non-Stop sendMessageCount_ " << sendMessageCount_ << " Client " << id_
+           << " onWriteComplete";
+    sendNextMessage(conn, id_, messageSize_);
+    sendMessageCount_++;
+    return;
+  }
   LOG_INFO << "sendMessageCount_ " << sendMessageCount_ << " Client " << id_
            << " onWriteComplete";
-  // if (unlimitedSend_) {
-  //   sendNextMessage(conn, id_, messageSize_);
-  //   sendMessageCount_--;
-  //   return;
-  // }
   // 只发送100条数据，当发送完毕后且接收完毕后，关闭连接
-  if (sendMessageCount_ == -1) {
+  if (sendMessageCount_ == 0) {
     if (recvMessageCount_ == 0) {
-      // if (conn->connected()) {
-      // conn->forceClose();
-      // }
+      if (conn->connected()) {
+        conn->getLoop()->runInLoop([conn]() { conn->forceClose(); });
+        //   conn->getLoop()->runInLoop(std::bind(&muduo::net::TcpConnection::forceClose,
+        //   conn));
+        // conn->forceClose();
+      }
     }
     return;
   }
@@ -68,7 +73,6 @@ void PressureClient::connect() { client_.connect(); }
 void PressureClient::onConnection(const muduo::net::TcpConnectionPtr &conn) {
   // 处理连接建立的逻辑
   if (conn->connected()) {
-    isConnected_ = true;
     MessageHeader header;
     header.senderID = id_;
     header.flag = Constants::CONN_MSG;
@@ -78,8 +82,6 @@ void PressureClient::onConnection(const muduo::net::TcpConnectionPtr &conn) {
   } else {
     // 连接断开的逻辑，这里简单打印一下，实际应用中可能需要重连，或者其他处理，比如记录日志，或者通知其他模块，等等
     LOG_INFO << "Client " << id_ << " disconnected";
-    isConnected_ = false;
-    forceCloseCalled_ = false;
     if (closeCallback_) {
       closeCallback_();
     }
@@ -111,31 +113,26 @@ void PressureClient::doHandleReadyMessage(
     // 服务器发来的消息，说明连接建立成功
     LOG_INFO << "RelaySever :" << message << " Client " << id_
              << " , delay: " << delay << "ms";
-    if (id_ % 2 == 0) { // 奇数的人先发消息
-      return;
-    }
   } else {
-    if (recvMessageCount_ == 0) {
-      if (sendMessageCount_ == -1) {
-        // if (conn->connected()) {
-        // conn->forceClose();
-        // }
-      }
-      return;
-    }
-    
-    // 客户端发来的消息
-    LOG_INFO << " Client " << header.senderID << " to Client " << id_ << " : "
-             << message << " , delay: " << delay << " ms ";
-    recvMessageCount_--;
-    LOG_INFO << " Client " << id_
-             << " recvMessageCount_ = " << recvMessageCount_;
+    // if (recvMessageCount_ == 0) {
+    //   if (sendMessageCount_ == -1) {
+    //     if (conn->connected()) {
+    //       conn->getLoop()->runInLoop([conn]() { conn->forceClose(); });
+    //     }
+    //   }
+    //   return;
+    // }
 
+    // 客户端发来的消息
+    recvMessageCount_--;
+    LOG_INFO << " Client " << header.senderID << " to Client " << id_ << " : "
+             << message << " , delay: " << delay << " ms : recvMessageCount_ = "<<recvMessageCount_;
+    // LOG_INFO << " Client " << id_ << " recvMessageCount_ = " << recvMessageCount_;
     if (recvMessageCount_ == 0) {
-      if (sendMessageCount_ == -1) {
-        // if (conn->connected()) {
-        // conn->forceClose();
-        // }
+      if (sendMessageCount_ == 0) {
+        if (conn->connected()) {
+        conn->getLoop()->runInLoop([conn]() { conn->forceClose(); });
+        }
       }
     }
   }

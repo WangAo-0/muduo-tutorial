@@ -2,23 +2,51 @@
 #include "MessageHeader.h"
 #include "Utils.h"
 #include "muduo/base/Logging.h"
+#include <functional>
 
 RelayServer::RelayServer(EventLoop *loop, const InetAddress &listenAddr,
-                         int numThreads)
+                         int numThreads, bool enableWaterMark)
     : server_(loop, listenAddr, "RelayServer") {
-  server_.setConnectionCallback(
-      std::bind(&RelayServer::onConnection, this, _1));
-  server_.setMessageCallback(
-      std::bind(&RelayServer::onMessage, this, _1, _2, _3));
+  if (enableWaterMark) { enableHighWaterMark(); }
+  server_.setConnectionCallback(std::bind(&RelayServer::onConnection, this, _1));
+  server_.setMessageCallback(std::bind(&RelayServer::onMessage, this, _1, _2, _3));
   server_.setThreadNum(numThreads);
 }
 
 void RelayServer::start() { server_.start(); }
 
+/**
+ * @brief 检查输出缓冲区水位是否下降了
+ * 1. 如果下降了，继续接受数据
+ * @param conn
+ */
+void RelayServer::onWriteComplete(const TcpConnectionPtr &conn) {
+  LOG_INFO << "RelayServer - onWriteComplete";
+  if (isEnableHighWaterMark() && conn->outputBuffer()->readableBytes() < highWaterMark()) {
+    conn->startRead();
+  }
+}
+
+/**
+ * @brief 发送缓冲区达到水位时
+ * 1. 暂停接受数据
+ * 2. 注册回调函数，当缓冲区数据量降到一定程度时，继续接受数据
+ */
+void RelayServer::onHighWaterMarkCallback(const TcpConnectionPtr &conn) {
+  LOG_INFO << "RelayServer - HighWaterMarkCallback";
+  conn->stopRead();
+  conn->setWriteCompleteCallback(
+      std::bind(&RelayServer::onWriteComplete, this, conn));
+}
+
 void RelayServer::onConnection(const TcpConnectionPtr &conn) {
   if (conn->connected()) {
+    conn->setHighWaterMarkCallback(
+        std::bind(&RelayServer::onHighWaterMarkCallback, this, conn),
+        highWaterMark());
     LOG_INFO << "RelayServer - New connection from "
              << conn->peerAddress().toIpPort();
+
     // 发送一个欢迎消息，告诉客户端连接成功
     // 同时也是一个启动消息，触发客户端的接收消息，接受完消息后，客户端会开始发送消息
     MessageHeader header;
@@ -37,7 +65,8 @@ void RelayServer::onConnection(const TcpConnectionPtr &conn) {
     // readyToCloseClientsMap_.push_back(conn);
     // LOG_INFO << "RelayServer - Connection from "
     //          << conn->peerAddress().toIpPort() << " is down"
-    //          << "readyToCloseClientsMap_ : " << readyToCloseClientsMap_.size()
+    //          << "readyToCloseClientsMap_ : " <<
+    //          readyToCloseClientsMap_.size()
     //          << "clientsMap_ : " << clientsMap_.size();
     // if (readyToCloseClientsMap_.size() == clientsMap_.size()) {
     //   LOG_INFO << "Clients nums :" << readyToCloseClientsMap_.size()
@@ -108,7 +137,6 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
 
         // 4. 继续放在缓冲区中,等下一次
         // LOG_WARN << "Target client not found: " << header.targetID;
-        // buf->retrieve(sizeof(MessageHeader) + header.messageLength);
         break;
       }
     } else // 基本不会走这里

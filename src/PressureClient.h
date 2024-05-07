@@ -12,14 +12,14 @@ class PressureClient {
 public:
   PressureClient(muduo::net::EventLoop *loop,
                  const muduo::net::InetAddress &serverAddr, const uint32_t &id,
-                 int messageSize, int messageCount);
+                 int messageSize, int messageCount ,bool stop);
 
   void connect();
 
   typedef std::function<void()> CloseCallback;
   void setCloseCallback(const CloseCallback &cb) { closeCallback_ = cb; }
-  bool  isConnected() const { return isConnected_; }  
-  bool forceCloseCalled() const { return forceCloseCalled_; }
+  // bool  isConnected() const { return isConnected_; }  
+  // bool forceCloseCalled() const { return forceCloseCalled_; }
 
 private:
   const uint32_t id_;
@@ -34,9 +34,9 @@ private:
   int sendMessageCount_;
   int recvMessageCount_ ;
   uint32_t remainingMessageSize_ = 0;
-  bool isConnected_ = false;
-  bool forceCloseCalled_ = false;
-
+  // bool isConnected_ = false;
+  // bool forceCloseCalled_ = false;
+  bool stop_ ;
   bool handleMessage(const muduo::net::TcpConnectionPtr &conn,
                      muduo::net::Buffer *buf, muduo::Timestamp receiveTime);
   void doHandleReadyMessage(const muduo::net::TcpConnectionPtr &conn,
