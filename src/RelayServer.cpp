@@ -30,7 +30,9 @@ void RelayServer::start() { server_.start(); }
 void RelayServer::onWriteComplete(const TcpConnectionPtr &conn) {
   if (isEnableHighWaterMark() &&
       conn->outputBuffer()->readableBytes() < highWaterMark()) {
-        LOG_INFO <<conn->name()<< " : 低了,outbuffer:"<<conn->outputBuffer()->readableBytes()<<",inputbuffer :"<<conn->inputBuffer()->readableBytes();
+    LOG_INFO << conn->name()
+             << " : 低了,outbuffer:" << conn->outputBuffer()->readableBytes()
+             << ",inputbuffer :" << conn->inputBuffer()->readableBytes();
     // conn->startRead();
   }
 }
@@ -75,38 +77,16 @@ void RelayServer::onConnection(const TcpConnectionPtr &conn) {
     conn->getLoop()->runInLoop([this, conn]() {
       {
         std::lock_guard<std::mutex> lock(myMutex);
-
-        // std::unique_lock<boost::shared_mutex> lock(myMutex);
-        auto it = clientsNameMap_.find(conn->name());
-        if (it != clientsNameMap_.end() && clientsMap_.count(it->second) > 0) {
-          clientsMap_.erase(it->second);
-          clientsNameMap_.erase(it);
+        if (clientsMap_.find(conn->id_) != clientsMap_.end()) {
+          clientsMap_.erase(conn->id_);
         }
         count++;
       }
       LOG_INFO << "RelayServer - Connection from "
                << conn->peerAddress().toIpPort() << " is down";
     });
-    if (count == 100)
-      server_.getLoop()->quit();
-
-    // auto it = clientsNameMap_.find(conn->name());
-    // if (it != clientsNameMap_.end()) {
-    //   clientsMap_.erase(it->second);
-    //   clientsNameMap_.erase(it);
-    // }
-
-    // readyToCloseClientsMap_.push_back(conn);
-    // LOG_INFO << "RelayServer - Connection from "
-    //          << conn->peerAddress().toIpPort() << " is down"
-    //          << "readyToCloseClientsMap_ : " <<
-    //          readyToCloseClientsMap_.size()
-    //          << "clientsMap_ : " << clientsMap_.size();
-    // if (readyToCloseClientsMap_.size() == clientsMap_.size()) {
-    //   LOG_INFO << "Clients nums :" << readyToCloseClientsMap_.size()
-    //            << "All clients are disconnected, stop the relay server.";
+    // if (count == 100)
     //   server_.getLoop()->quit();
-    // }
     // 接收到A关闭了写端，记录一下，当B也关闭写端时，关闭连接
   }
 }
@@ -161,10 +141,9 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
     if (header.flag == 1) { // 连接建立发送消息
       {
         std::lock_guard<std::mutex> lock(myMutex);
-
-        // std::unique_lock<boost::shared_mutex> lock(myMutex);
         clientsMap_[header.senderID] = conn;
-        // clientsNameMap_[conn->name()] = header.senderID;
+        conn->id_ = header.senderID;
+        // conn->peer_id_ = header.targetID;
       }
       buf->retrieve(sizeof(MessageHeader));
     } else if (header.flag == 0) { // 建立后发送消息
@@ -175,9 +154,8 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
 
       // 完整，则找到目标ID对应的客户端，发送消息
       {
+        // FixMe: 没加锁
         std::lock_guard<std::mutex> lock(myMutex);
-
-        // std::unique_lock<boost::shared_mutex> lock(myMutex);
         auto it = clientsMap_.find(header.targetID);
         if (it != clientsMap_.end()) {
           buf->retrieve(sizeof(MessageHeader));
@@ -192,25 +170,6 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
           it->second->send(headerAndData,
                            sizeof(MessageHeader) + message.size());
         } else {
-          // 1. 直接抛弃消息
-          // LOG_WARN << "Target client not found: " << header.targetID;
-          // buf->retrieve(sizeof(MessageHeader) + header.messageLength);
-
-          // 2. 抛弃消息，返回错误信息给发送方
-          // LOG_WARN << "Target client not found: " << header.targetID;
-          // buf->retrieve(sizeof(MessageHeader) + header.messageLength);
-          // string errorMessage = "Target client "+
-          // std::to_string(header.targetID) + " is offline. " ;
-          // conn->send(errorMessage);
-
-          // 3. 保存消息，等目标ID上线后再发送
-          // LOG_WARN << "Target client not found: " << header.targetID;
-          // buf->retrieve(sizeof(MessageHeader));
-          // string message = buf->retrieveAsString(header.messageLength);
-          // offlineMessages_[header.targetID].push_back(message);
-
-          // 4. 继续放在缓冲区中,等下一次
-          // LOG_WARN << "Target client not found: " << header.targetID;
           break;
         }
       }
