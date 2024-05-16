@@ -3,15 +3,13 @@
 #include "muduo/base/Logging.h"
 #include <functional>
 #include <iostream>
-// #include "muduo/net/EventLoopThreadPool.h"
-// #include "muduo/net/EventLoop.h"
 
 StressGenerator::StressGenerator(muduo::net::EventLoop *loop,
                                  const muduo::net::InetAddress &serverAddr,
-                                 int stop,
+                                 int stop,int startId,
                                  int sessionCount, int messageSize,
                                  int messageCount, int threadCount)
-    : loop_(loop), serverAddr_(serverAddr), sessionCount_(sessionCount),
+    : loop_(loop), serverAddr_(serverAddr),startId_(startId) ,sessionCount_(sessionCount),
       messageSize_(messageSize), messageCount_(messageCount),
       threadPool_(new muduo::net::EventLoopThreadPool(loop, "PressureClientPoll")) {
         stop_ = stop==1?true:false;
@@ -33,12 +31,12 @@ void StressGenerator::start() {
   if (started_.getAndSet(1) == 0) {
     threadPool_->start(threadInitCallback_);
     clients_.reserve(sessionCount_);
-    for (int i = 1; i <= sessionCount_; ++i) {
+    for (int i = startId_; i < startId_ + sessionCount_; ++i) {
       muduo::net::EventLoop *ioLoop = threadPool_->getNextLoop();
       PressureClient *client = new PressureClient(ioLoop, serverAddr_, i,
                                                   messageSize_, messageCount_,stop_);
       client->setCloseCallback(
-          std::bind(&StressGenerator::onClientClose, this));
+          std::bind(&StressGenerator::onClientClose, this, loop_));
       clients_.emplace_back(client);
       ioLoop->runInLoop(std::bind(&PressureClient::connect, client));
     }
@@ -55,8 +53,8 @@ void StressGenerator::start() {
 //     }
 //   }
 // }
-
-void StressGenerator::onClientClose() {
+void StressGenerator::onClientCloseInLoop() {
+  // Destroy all disconnected clients
   --sessionCount_;
   LOG_INFO << "sessionCount_ = " << sessionCount_;
   if (sessionCount_ == 0) {
@@ -64,7 +62,13 @@ void StressGenerator::onClientClose() {
               << std::endl;
     // All clients are disconnected, stop the stress generator.
     // loop_->quit();
+
     loop_->runAfter(1.0, [this] { loop_->quit(); });
     // 或者像baseloop发送一个写事件，监听到可读后，关闭
   }
+}
+
+
+void StressGenerator::onClientClose(muduo::net::EventLoop *loop) {
+  loop_->runInLoop([this] { onClientCloseInLoop(); });
 }

@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
   EventLoop loop;
   g_loop = &loop;  // Set the global pointer
   muduo::net::InetAddress listenAddr(port);
-  RelayServer server(&loop, listenAddr, numThreads);
+  RelayServer server(&loop, listenAddr, numThreads,true);
   server.start();
 
   g_loop->loop(); // Enter the event loop

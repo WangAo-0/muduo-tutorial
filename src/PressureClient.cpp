@@ -19,7 +19,8 @@ PressureClient::PressureClient(muduo::net::EventLoop *loop,
       std::bind(&PressureClient::onWriteComplete, this, std::placeholders::_1));
 }
 
-void sendNextMessage(const muduo::net::TcpConnectionPtr &conn, const uint32_t &id, int &messageSize) {
+void sendNextMessage(const muduo::net::TcpConnectionPtr &conn,
+                     const uint32_t &id, int &messageSize) {
   MessageHeader header;
   header.senderID = id;
   header.flag = Constants::SEND_MSG;
@@ -42,8 +43,8 @@ void sendNextMessage(const muduo::net::TcpConnectionPtr &conn, const uint32_t &i
  */
 void PressureClient::onWriteComplete(const muduo::net::TcpConnectionPtr &conn) {
   if (!stop_) {
-    LOG_INFO << "Non-Stop sendMessageCount_ " << sendMessageCount_ << " Client " << id_
-           << " onWriteComplete";
+    LOG_INFO << "Non-Stop sendMessageCount_ " << sendMessageCount_ << " Client "
+             << id_ << " onWriteComplete";
     sendNextMessage(conn, id_, messageSize_);
     sendMessageCount_++;
     return;
@@ -75,6 +76,7 @@ void PressureClient::onConnection(const muduo::net::TcpConnectionPtr &conn) {
   if (conn->connected()) {
     MessageHeader header;
     header.senderID = id_;
+    header.targetID = id_ % 2 == 0 ? id_ - 1 : id_ + 1;
     header.flag = Constants::CONN_MSG;
     char headerChars[sizeof(MessageHeader)];
     memcpy(headerChars, &header, sizeof(MessageHeader));
@@ -125,13 +127,17 @@ void PressureClient::doHandleReadyMessage(
 
     // 客户端发来的消息
     recvMessageCount_--;
-    LOG_INFO << " Client " << header.senderID << " to Client " << id_ << " : "
-             << message << " , delay: " << delay << " ms : recvMessageCount_ = "<<recvMessageCount_;
-    // LOG_INFO << " Client " << id_ << " recvMessageCount_ = " << recvMessageCount_;
+    // LOG_INFO << " Client " << header.senderID << " to Client " << id_ << " : "
+    //          << message << " , delay: " << delay
+    //          << " ms : recvMessageCount_ = " << recvMessageCount_;
+    LOG_INFO << " Client " << header.senderID << " to Client " << id_ <<" , delay: " << delay
+             << " ms : recvMessageCount_ = " << recvMessageCount_;
+    // LOG_INFO << " Client " << id_ << " recvMessageCount_ = " <<
+    // recvMessageCount_;
     if (recvMessageCount_ == 0) {
       if (sendMessageCount_ == 0) {
         if (conn->connected()) {
-        conn->getLoop()->runInLoop([conn]() { conn->forceClose(); });
+          conn->getLoop()->runInLoop([conn]() { conn->forceClose(); });
         }
       }
     }
@@ -184,11 +190,53 @@ bool PressureClient::handleMessage(const muduo::net::TcpConnectionPtr &conn,
   }
 }
 
+bool PressureClient::handleMessageWithCheckFlag(
+    const muduo::net::TcpConnectionPtr &conn, muduo::net::Buffer *buf,
+    muduo::Timestamp receiveTime) {
+
+  MessageHeader header;
+  memcpy(&header, buf->peek(), sizeof(header));
+
+  // 1. 是否有缓存消息，如果有，先处理缓存消息
+  if (remainingMessageSize_ > 0) {
+    if (buf->readableBytes() >= remainingMessageSize_) {
+      doHandleReadyMessage(conn, buf, receiveTime, header);
+      return true;
+    } else
+      return false;
+  }
+  // 2. 处理新消息
+  else {
+    // TODO 如果有很多次的话，可能需要告知服务器端，然后重连或者断开连接
+    if (header.flag != Constants::SEVR_MSG &&
+        header.flag != Constants::SEND_MSG) {
+      // 接收消息的flag都是2，如果不是2，说明有错误
+      LOG_ERROR << "Error message flag: " << header.flag;
+      buf->retrieveAll();
+      return false;
+    }
+
+    // 如果消息完整，处理消息
+    if (buf->readableBytes() >= sizeof(MessageHeader) + header.messageLength) {
+      doHandleReadyMessage(conn, buf, receiveTime, header);
+      return true;
+    } else {
+      remainingMessageSize_ = header.messageLength + sizeof(MessageHeader);
+      LOG_INFO << "Message not complete";
+      return false;
+    }
+  }
+}
+
 void PressureClient::onMessage(const muduo::net::TcpConnectionPtr &conn,
                                muduo::net::Buffer *buf,
                                muduo::Timestamp receiveTime) {
+  // buf->retrieveAll();
+  // return;
   while (buf->readableBytes() >= sizeof(MessageHeader)) {
     bool hasReadyMessage = handleMessage(conn, buf, receiveTime);
+    // bool hasReadyMessage = handleMessageWithCheckFlag(conn, buf,
+    // receiveTime);
     if (!hasReadyMessage) {
       break;
     }

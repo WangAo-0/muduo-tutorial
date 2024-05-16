@@ -15,7 +15,7 @@ public:
   typedef std::function<void(muduo::net::EventLoop *)> ThreadInitCallback;
 
   StressGenerator(muduo::net::EventLoop *loop,
-                  const muduo::net::InetAddress &serverAddr,int stop, int sessionCount,
+                  const muduo::net::InetAddress &serverAddr,int stop, int startId,int sessionCount,
                   int messageSize, int messageCount, int threadCount = 0);
   muduo::net::EventLoop *getLoop() const { return loop_; }
 
@@ -43,10 +43,11 @@ public:
 private:
   muduo::net::EventLoop *loop_;
   muduo::net::InetAddress serverAddr_;
+  int startId_;
   int sessionCount_;
   int messageSize_;
   int messageCount_;
-  void onClientClose();
+  void onClientClose(muduo::net::EventLoop *loop);
   std::shared_ptr<muduo::net::EventLoopThreadPool> threadPool_;
   muduo::AtomicInt32 started_;
   ThreadInitCallback threadInitCallback_;
@@ -55,6 +56,8 @@ private:
   std::vector<std::unique_ptr<PressureClient>> pendingDestruction_;
   bool stop_;
   void onLoopIteration();
+
+  void onClientCloseInLoop();
 };
 
 #endif // STRESSGENERATOR_H
