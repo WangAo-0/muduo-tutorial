@@ -23,7 +23,7 @@ void setLogging(const char *argv0) {
   g_asyncLog->start();
 }
 
-void setArgs(int argc, char *argv[],int &stop ,int &sessionCount, int &messageSize,
+void setArgs(int argc, char *argv[],int &stop ,int & startId ,int &sessionCount, int &messageSize,
              int &port, int &messageCount) {
   // if (argc > 1) {
   //   sessionCount = atoi(argv[1]);
@@ -41,7 +41,7 @@ void setArgs(int argc, char *argv[],int &stop ,int &sessionCount, int &messageSi
   //   messageCount = atoi(argv[4]);
   // }
   if (argc > 1) {
-    int* args[] = {&stop, &sessionCount, &messageSize, &port, &messageCount };
+    int* args[] = {&stop, &startId,&sessionCount, &messageSize, &port, &messageCount };
     int numArgs = sizeof(args) / sizeof(args[0]);
 
     for (int i = 0; i < numArgs && i < argc - 1; ++i) {
@@ -67,13 +67,14 @@ int main(int argc, char *argv[]) {
   int sessionCount = 100; 
   int messageSize = 13;   
   int messageCount = 100; 
-  setArgs(argc, argv, stop, sessionCount, messageSize, port, messageCount);
+  int startId = 1;
+  setArgs(argc, argv, stop, startId,sessionCount, messageSize, port, messageCount);
 
   LOG_INFO << "pid = " << getpid() << ", tid = " << muduo::CurrentThread::tid();
   muduo::net::EventLoop loop;
   muduo::net::InetAddress serverAddr("127.0.0.1", port); // 服务器地址需要修改
 
-  StressGenerator generator(&loop, serverAddr, stop,sessionCount, messageSize,
+  StressGenerator generator(&loop, serverAddr, stop,startId,sessionCount, messageSize,
                             messageCount);
   // generator.connect();
   generator.start(); // 这里其实就已经开始工作了

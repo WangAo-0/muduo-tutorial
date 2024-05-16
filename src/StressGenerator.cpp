@@ -8,10 +8,10 @@
 
 StressGenerator::StressGenerator(muduo::net::EventLoop *loop,
                                  const muduo::net::InetAddress &serverAddr,
-                                 int stop,
+                                 int stop,int startId,
                                  int sessionCount, int messageSize,
                                  int messageCount, int threadCount)
-    : loop_(loop), serverAddr_(serverAddr), sessionCount_(sessionCount),
+    : loop_(loop), serverAddr_(serverAddr),startId_(startId) ,sessionCount_(sessionCount),
       messageSize_(messageSize), messageCount_(messageCount),
       threadPool_(new muduo::net::EventLoopThreadPool(loop, "PressureClientPoll")) {
         stop_ = stop==1?true:false;
@@ -33,7 +33,7 @@ void StressGenerator::start() {
   if (started_.getAndSet(1) == 0) {
     threadPool_->start(threadInitCallback_);
     clients_.reserve(sessionCount_);
-    for (int i = 1; i <= sessionCount_; ++i) {
+    for (int i = 1 + startId_; i <= sessionCount_ + startId_; ++i) {
       muduo::net::EventLoop *ioLoop = threadPool_->getNextLoop();
       PressureClient *client = new PressureClient(ioLoop, serverAddr_, i,
                                                   messageSize_, messageCount_,stop_);

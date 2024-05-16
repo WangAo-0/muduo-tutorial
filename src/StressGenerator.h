@@ -15,7 +15,7 @@ public:
   typedef std::function<void(muduo::net::EventLoop *)> ThreadInitCallback;
 
   StressGenerator(muduo::net::EventLoop *loop,
-                  const muduo::net::InetAddress &serverAddr,int stop, int sessionCount,
+                  const muduo::net::InetAddress &serverAddr,int stop,int startId, int sessionCount,
                   int messageSize, int messageCount, int threadCount = 0);
   muduo::net::EventLoop *getLoop() const { return loop_; }
 
@@ -39,6 +39,7 @@ public:
     return threadPool_;
   }
   void start();
+  int startId_;
 
 private:
   muduo::net::EventLoop *loop_;
