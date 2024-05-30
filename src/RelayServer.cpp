@@ -2,6 +2,7 @@
 #include "MessageHeader.h"
 #include "Utils.h"
 #include "muduo/base/Logging.h"
+#include "muduo/net/Callbacks.h"
 #include <bits/stdint-uintn.h>
 #include <functional>
 
@@ -33,7 +34,8 @@ void RelayServer::onWriteComplete(const TcpConnectionPtr &conn) {
     LOG_INFO << conn->name()
              << " : 低了,outbuffer:" << conn->outputBuffer()->readableBytes()
              << ",inputbuffer :" << conn->inputBuffer()->readableBytes();
-    // conn->startRead();
+    conn->startRead();
+    conn->setWriteCompleteCallback(WriteCompleteCallback());
   }
 }
 
@@ -76,8 +78,8 @@ void RelayServer::onConnection(const TcpConnectionPtr &conn) {
     // 找到conn->name()对应的id，再从clientMaps_中删除conn,最后再删除
     conn->getLoop()->runInLoop([this, conn]() {
       {
-        std::lock_guard<std::mutex> lock(myMutex);
-        if (clientsMap_.find(conn->id_) != clientsMap_.end()) {
+        tbb::concurrent_hash_map<uint32_t, TcpConnectionPtr>::accessor ac;
+        if (clientsMap_.find(ac, conn->id_)) {
           clientsMap_.erase(conn->id_);
         }
         count++;
@@ -95,12 +97,10 @@ void RelayServer::onImmediateForward(const TcpConnectionPtr &conn, Buffer *buf,
                                      Timestamp time) {
   if (conn->id_ != 0) { // 说明创建成了
     {
-      std::lock_guard<std::mutex> lock(myMutex);
-      auto it = clientsMap_.find(conn->peer_id_);
-
-      if (it != clientsMap_.end()) {
+      tbb::concurrent_hash_map<uint32_t, TcpConnectionPtr>::accessor ac;
+      if (clientsMap_.find(ac, conn->peer_id_)) {
         string data = buf->retrieveAllAsString();
-        it->second->send(data);
+        ac->second->send(data);
         return;
       }
     }
@@ -112,11 +112,13 @@ void RelayServer::onImmediateForward(const TcpConnectionPtr &conn, Buffer *buf,
     // 记录客户端ID
     if (header.flag == 1) { // 连接建立发送消息
       {
-        std::lock_guard<std::mutex> lock(myMutex);
-        clientsMap_[header.senderID] = conn;
-        conn->id_ = header.senderID;
-        conn->peer_id_ = header.targetID;
-        buf->retrieve(sizeof(MessageHeader));
+        tbb::concurrent_hash_map<uint32_t, TcpConnectionPtr>::accessor ac;
+        if (clientsMap_.insert(ac, header.senderID)) {
+          ac->second = conn;
+          conn->id_ = header.senderID;
+          conn->peer_id_ = header.targetID;
+          buf->retrieve(sizeof(MessageHeader));
+        }
       }
     }
   }
@@ -140,10 +142,11 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
     // 记录客户端ID
     if (header.flag == 1) { // 连接建立发送消息
       {
-        std::lock_guard<std::mutex> lock(myMutex);
-        clientsMap_[header.senderID] = conn;
-        conn->id_ = header.senderID;
-        // conn->peer_id_ = header.targetID;
+        tbb::concurrent_hash_map<uint32_t, TcpConnectionPtr>::accessor ac;
+        if (clientsMap_.insert(ac, header.senderID)) {
+          ac->second = conn;
+          conn->id_ = header.senderID;
+        }
       }
       buf->retrieve(sizeof(MessageHeader));
     } else if (header.flag == 0) { // 建立后发送消息
@@ -155,9 +158,9 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
       // 完整，则找到目标ID对应的客户端，发送消息
       {
         // FixMe: 没加锁
-        std::lock_guard<std::mutex> lock(myMutex);
-        auto it = clientsMap_.find(header.targetID);
-        if (it != clientsMap_.end()) {
+        // std::lock_guard<std::mutex> lock(myMutex);
+        tbb::concurrent_hash_map<uint32_t, TcpConnectionPtr>::accessor ac;
+        if (clientsMap_.find(ac, header.targetID)) {
           buf->retrieve(sizeof(MessageHeader));
           // 获取数据
           string message = buf->retrieveAsString(header.messageLength);
@@ -167,7 +170,7 @@ void RelayServer::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
           memcpy(headerAndData + sizeof(MessageHeader), message.c_str(),
                  message.size());
           // 发送数据
-          it->second->send(headerAndData,
+          ac->second->send(headerAndData,
                            sizeof(MessageHeader) + message.size());
         } else {
           break;

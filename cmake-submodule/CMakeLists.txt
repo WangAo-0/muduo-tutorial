@@ -13,7 +13,7 @@ add_subdirectory(muduo)
 # Set the common libraries.
 link_libraries(muduo_net muduo_base pthread rt)
 
-# find_package(TBB REQUIRED)
+find_package(TBB REQUIRED)
 # Set the source files for startGenerator.
 set(START_GENERATOR_SRC
   ../src/startGenerator.cpp 
@@ -25,7 +25,7 @@ add_executable(startGenerator ${START_GENERATOR_SRC})
 target_compile_options(startGenerator PRIVATE -pg) # Add -pg option here
 
 target_include_directories(startGenerator PRIVATE muduo)
-# target_link_libraries(startGenerator TBB::tbb)
+target_link_libraries(startGenerator TBB::tbb)
 
 
 # Set the source files for startServer.
@@ -38,5 +38,5 @@ SET(CMAKE CXX FLAGS "${CMAKE_CXX_FLAGS} -pg")
 add_executable(startServer ${START_SERVER_SRC})
 target_compile_options(startServer PRIVATE -pg) # Add -pg option here
 target_include_directories(startServer PRIVATE muduo)
-# target_link_libraries(startServer TBB::tbb)
+target_link_libraries(startServer TBB::tbb)
 

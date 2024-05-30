@@ -14,7 +14,7 @@ program_path=$1
 
 for (( i=0; i<$times; i++ ))
 do
-   nohup $program_path 0 0 $startId $session_count 10000 8000 100 > ./setup1/setup1_output_$i.txt 2>&1 &
+   nohup $program_path 0 0 $startId $session_count 10240 8000 100 > ./setup1/setup1_output_$i.txt 2>&1 &
    startId=$((startId + increment))
 done
 
